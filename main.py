@@ -1,57 +1,49 @@
 import os
-import shutil
+import sys
 import subprocess
 import re
 import argparse
 import time
+import platform
 from colorama import Fore, Style, init
 
 init(autoreset=True)
 
-parser = argparse.ArgumentParser(description="Extract HDR10+ from Netflix AV1 MKV.")
-parser.add_argument( "-i", "--input", help="Input Netflix AV1 MKV file.", required=True)
-args = parser.parse_args()
+def get_executable_name(name):
+    """Return executable name with .exe on Windows."""
+    return f"{name}.exe" if platform.system().lower() == "windows" else name
 
-input_file = args.input
+def check_tool(executable, display_name):
+    """Check if a tool exists in current directory."""
+    location = os.path.join(os.getcwd(), executable)
+    print(f"{Fore.CYAN}[INFO]{Style.RESET_ALL} Checking for {display_name}...")
+    if not os.path.isfile(location):
+        print(f"{Fore.RED}[ERROR]{Style.RESET_ALL} Missing tool: {os.path.basename(location)}")
+        sys.exit(1)
+    print(f"{Fore.GREEN}[OK]{Style.RESET_ALL} Found {display_name}: {os.path.basename(location)}")
+    return location
 
-print(f"{Fore.CYAN}[INFO]{Style.RESET_ALL} Input file: {input_file}")
+def get_display_name(path):
+    """Return basename if file, folder name if directory."""
+    if os.path.isdir(path):
+        return os.path.basename(os.path.abspath(path))
+    return os.path.basename(path)
 
-if not os.path.isfile(input_file):
-    print(f"{Fore.RED}✖ File not found: {input_file}")
-    exit(1)
+def remove_temp_file(path):
+    """Delete a temporary file if it exists."""
+    if os.path.exists(path):
+        os.remove(path)
+        print(f"{Fore.YELLOW}[WARN]{Style.RESET_ALL} Deleted temporary file: {get_display_name(path)}")
 
-print(f"{Fore.CYAN}[INFO]{Style.RESET_ALL} Checking required binaries...")
-
-TOOLS_PATH = "tools"
-BINARIES = {
-    "HandBrakeCLI_exe":  os.path.join(TOOLS_PATH, "HandBrakeCLI.exe"),
-    "ffmpeg_exe": os.path.join(TOOLS_PATH, "ffmpeg.exe"),
-    "hdr10plus_tool_exe": os.path.join(TOOLS_PATH, "hdr10plus_tool.exe"),
-}
-
-if not os.path.isdir(TOOLS_PATH):
-    print(f"{Fore.RED}✖ Missing required folder: {TOOLS_PATH}")
-    print(f"{Fore.RED}✖ Process cannot continue. Please create the missing folder and add the required binaries.")
-    exit(1)
-
-missing_binaries = [name for name, binary in BINARIES.items() if not shutil.which(binary)]
-if missing_binaries:
-    print(f"{Fore.RED}✖ Missing required binaries: {', '.join(missing_binaries)}")
-    print(f"{Fore.RED}✖ Process cannot continue. Please install the missing dependencies.")
-    exit(1)
-
-print(f"{Fore.GREEN}✔ All required binaries found.")
-
-base_name = os.path.splitext(os.path.basename(input_file))[0]
-temp_hevc_file = f"{base_name}__encoded.hevc.mkv"
-json_output = f"{base_name}.hdr10plus.json"
-plot_output = f"{base_name}.hdr10plus_plot.png"
-
-print(f"{Fore.CYAN}[INFO]{Style.RESET_ALL} Output HEVC: {temp_hevc_file}")
-print(f"{Fore.CYAN}[INFO]{Style.RESET_ALL} Output JSON: {json_output}")
-print(f"{Fore.CYAN}[INFO]{Style.RESET_ALL} Output Plot: {plot_output}")
-
-print(f"{Fore.CYAN}[INFO]{Style.RESET_ALL} Starting conversion from AV1 HDR10+ to HEVC HDR10+...")
+def run_command(command, description):
+    """Run a shell command and handle errors."""
+    print(f"{Fore.CYAN}[INFO]{Style.RESET_ALL} Running: {description}")
+    try:
+        subprocess.run(command, check=True, shell=True)
+        print(f"{Fore.GREEN}[OK]{Style.RESET_ALL} Completed: {description}")
+    except subprocess.CalledProcessError as e:
+        print(f"{Fore.RED}[ERROR]{Style.RESET_ALL} Failed: {description} ({e})")
+        sys.exit(1)
 
 def format_hhmmss(seconds):
     seconds = int(seconds)
@@ -76,8 +68,38 @@ def display_progress_bar(progress, eta_str, elapsed_seconds):
         end='\r'
     )
 
+# === Argument Parsing ===
+parser = argparse.ArgumentParser(description="Extract HDR10+ from Netflix AV1 MKV.")
+parser.add_argument("-i", "--input", help="Input Netflix AV1 MKV file.", required=True)
+args = parser.parse_args()
+
+input_file = args.input
+print(f"{Fore.CYAN}[INFO]{Style.RESET_ALL} Input file: {get_display_name(input_file)}")
+
+if not os.path.isfile(input_file):
+    print(f"{Fore.RED}[ERROR]{Style.RESET_ALL} File not found: {get_display_name(input_file)}")
+    sys.exit(1)
+
+# === Tools ===
+TOOLS_PATH = "tools"
+handbrake = check_tool(os.path.join(TOOLS_PATH, get_executable_name("HandBrakeCLI")), "HandBrakeCLI")
+ffmpeg = check_tool(os.path.join(TOOLS_PATH, get_executable_name("ffmpeg")), "FFmpeg")
+hdr10plus_tool = check_tool(os.path.join(TOOLS_PATH, get_executable_name("hdr10plus_tool")), "HDR10+ Tool")
+
+# === Output Files ===
+base_name = os.path.splitext(os.path.basename(input_file))[0]
+temp_hevc_file = f"{base_name}__encoded.hevc.mkv"
+json_output = f"{base_name}.hdr10plus.json"
+plot_output = f"{base_name}.hdr10plus_plot.png"
+
+print(f"{Fore.CYAN}[INFO]{Style.RESET_ALL} Output HEVC: {get_display_name(temp_hevc_file)}")
+print(f"{Fore.CYAN}[INFO]{Style.RESET_ALL} Output JSON: {get_display_name(json_output)}")
+print(f"{Fore.CYAN}[INFO]{Style.RESET_ALL} Output Plot: {get_display_name(plot_output)}")
+print(f"{Fore.CYAN}[INFO]{Style.RESET_ALL} Starting conversion from AV1 HDR10+ to HEVC HDR10+...")
+
+# === HandBrake Encoding ===
 command = [
-    BINARIES["HandBrakeCLI_exe"],
+    handbrake,
     "-i", input_file,
     "-o", temp_hevc_file,
     "--encoder", "x265_10bit",
@@ -94,8 +116,6 @@ command = [
 
 progress_pattern = r'(\d+\.\d+)\s%\s.*ETA\s(\d{2}h\d{2}m\d{2}s)'
 previous_progress = -1
-
-print(f"{Fore.CYAN}[INFO]{Style.RESET_ALL} Launching HandBrakeCLI...")
 start_time = time.time()
 
 process = subprocess.Popen(
@@ -122,14 +142,13 @@ process.wait()
 print()
 
 if process.returncode != 0:
-    print(f"{Fore.RED}✖ HandBrakeCLI failed with exit code {process.returncode}")
-    exit(1)
-print(f"{Fore.GREEN}✔ Encoding completed.")
+    print(f"{Fore.RED}[ERROR]{Style.RESET_ALL} HandBrakeCLI failed with exit code {process.returncode}")
+    sys.exit(1)
+print(f"{Fore.GREEN}[OK]{Style.RESET_ALL} Encoding completed.")
 
-print(f"{Fore.CYAN}[INFO]{Style.RESET_ALL} Extracting HDR10+ metadata from HEVC...")
-
+# === HDR10+ Metadata Extraction ===
 ffmpeg_command = (
-    f'"{BINARIES["ffmpeg_exe"]}" '
+    f'"{ffmpeg}" '
     f'-y '
     f'-nostdin '
     f'-loglevel error '
@@ -138,43 +157,20 @@ ffmpeg_command = (
     f'-c:v copy '
     f'-bsf:v hevc_mp4toannexb '
     f'-f hevc - | '
-    f'"{BINARIES["hdr10plus_tool_exe"]}" '
+    f'"{hdr10plus_tool}" '
     f'extract - '
     f'-o "{json_output}"'
 )
+run_command(ffmpeg_command, f"Extract HDR10+ metadata from {get_display_name(temp_hevc_file)}")
 
-print(f"{Fore.CYAN}[INFO]{Style.RESET_ALL} Running ffmpeg and hdr10plus_tool...")
-
-try:
-    subprocess.run(ffmpeg_command, check=True, shell=True)
-    print(f"{Fore.GREEN}✔ HDR10+ metadata extracted successfully to: {json_output}")
-except subprocess.CalledProcessError as e:
-    print(f"{Fore.RED}✖ Metadata extraction failed: {e}")
-    if os.path.exists(temp_hevc_file):
-        os.remove(temp_hevc_file)
-        print(f"{Fore.YELLOW}⚠ Deleted temporary file: {temp_hevc_file}")
-    exit(1)
-
-print(f"{Fore.CYAN}[INFO]{Style.RESET_ALL} Generating HDR10+ plot image...")
-
+# === HDR10+ Plot Generation ===
 hdr10plus_plot_command = [
-    BINARIES["hdr10plus_tool_exe"], "plot",
+    hdr10plus_tool, "plot",
     json_output, "-t", "HDR10+ Plot",
     "-o", plot_output
 ]
+run_command(hdr10plus_plot_command, f"Generate HDR10+ plot: {get_display_name(plot_output)}")
 
-try:
-    subprocess.run(hdr10plus_plot_command, check=True)
-    print(f"{Fore.GREEN}✔ Plot saved to: {plot_output}")
-except subprocess.CalledProcessError as e:
-    print(f"{Fore.RED}✖ Plot generation failed: {e}")
-    if os.path.exists(temp_hevc_file):
-        os.remove(temp_hevc_file)
-        print(f"{Fore.YELLOW}⚠ Deleted temporary file: {temp_hevc_file}")
-    exit(1)
-
-if os.path.exists(temp_hevc_file):
-    os.remove(temp_hevc_file)
-    print(f"{Fore.YELLOW}⚠ Deleted temporary file: {temp_hevc_file}")
-
-print(f"{Fore.GREEN}✔ All processing steps completed successfully.")
+# === Cleanup ===
+remove_temp_file(temp_hevc_file)
+print(f"{Fore.GREEN}[OK]{Style.RESET_ALL} All processing steps completed successfully.")
