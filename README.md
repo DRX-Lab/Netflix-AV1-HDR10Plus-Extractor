@@ -1,3 +1,11 @@
+⚠️ **This repository has been archived.**
+
+Improved and native support for **HDR10+ metadata in AV1** is now available in a separate, actively maintained project:
+
+👉 [https://github.com/DRX-Lab/hdr10plus_tool-av1](https://github.com/DRX-Lab/hdr10plus_tool-av1)
+
+As a result, the workflow implemented in this repository is **no longer necessary**.
+
 # Netflix-AV1-HDR10Plus-Extractor
 
 A command-line tool for extracting HDR10+ metadata from AV1 MKV files using a conversion pipeline that transcodes AV1 to HEVC and retrieves HDR10+ metadata in JSON and PNG plot formats.
